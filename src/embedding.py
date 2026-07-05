@@ -1,9 +1,8 @@
-import numpy as np
+
 from sentence_transformers import SentenceTransformer
 from typing import List
-import numpy as np
-from typing import List
 from sklearn.metrics.pairwise import cosine_similarity
+import numpy as np
 
 
 class EmbeddingManager:

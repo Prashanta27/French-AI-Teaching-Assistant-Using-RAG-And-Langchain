@@ -1,4 +1,3 @@
-from pathlib import Path
 from langchain_community.document_loaders import PyPDFLoader
 from pathlib import Path
 
@@ -41,6 +40,16 @@ def process_all_pdfs(pdf_directory):
     print(f"\nTotal Documents Loaded: {len(all_documents)}")
 
     return all_documents
+
+def process_pdf(pdf_path):
+
+    loader = PyPDFLoader(pdf_path)
+
+    documents = loader.load()
+
+    print(f"Loaded {len(documents)} pages from {pdf_path}")
+
+    return documents
 
 
 if __name__ == "__main__":

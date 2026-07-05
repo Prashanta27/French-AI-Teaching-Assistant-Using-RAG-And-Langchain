@@ -32,25 +32,17 @@ class LLMGenerator:
         )
 
 
-    def generate(self, question: str,top_k: int = 2) -> str:
-
+    def generate(self, question: str, top_k: int = 8) -> str:
 
         print("\nRetrieving Relevant Documents...\n")
 
-        docs = self.retriever.retrieve(question,top_k=top_k)
-
-
-        if len(docs) == 0:
-
-            return "No relevant lesson materials found."
-
+        docs = self.retriever.retrieve(question, top_k=top_k)
 
         context = ""
 
-        for doc in docs:
-
-
-            context += f"""
+        if docs:
+            for doc in docs:
+                context += f"""
 
 Retrieved Passage (Score: {doc['similarity_score']:.3f})
 

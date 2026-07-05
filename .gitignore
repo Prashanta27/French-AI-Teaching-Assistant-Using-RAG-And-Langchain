@@ -1,10 +1,24 @@
-# Python-generated files
-__pycache__/
-*.py[oc]
-build/
-dist/
-wheels/
-*.egg-info
 
-# Virtual environments
-.venv
+# Vector Database
+data/pdf/
+data/vector_store/
+
+# Chroma
+chroma.sqlite3
+
+# Cache
+*.sqlite3
+
+# Embedding DB
+data/chroma/
+
+# FAISS
+*.faiss
+*.pkl
+
+# Index
+*.index
+
+# cache
+__pycache__/
+*.pyc

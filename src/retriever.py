@@ -30,7 +30,7 @@ class RAGRetriever:
         self.embedding_manager = embedding_manager
     
 
-    def retrieve(self, query: str, top_k: int = 2, score_threshold: float = 0.0) -> List[Dict[str, Any]]:
+    def retrieve(self, query: str, top_k: int = 8, score_threshold: float = 0) -> List[Dict[str, Any]]:
         """
         Retrieve Relevant documents for a query
 
@@ -52,9 +52,15 @@ class RAGRetriever:
 
         try:
             results = self.vector_store.collection.query(
-                query_embeddings=[query_embedding.tolist()],
-                n_results=top_k
+            query_embeddings=[query_embedding.tolist()],
+            n_results=40,        # retrieve more candidates
+            include=[
+                "documents",
+                "metadatas",
+                "distances"
+                ]
             )
+        
 
             # process results
             retrieved_docs = []
@@ -68,6 +74,15 @@ class RAGRetriever:
                 for i, (doc_id, document, metadata, distance) in enumerate(zip(ids, documents, metadatas, distances)):
                     # convert distance to similaity store (ChromaDB uses cosine distance)
                     similarity_score = 1 - distance
+                    print("="*60)
+                    print(metadata)
+                    print("="*70)
+                    print("Distance :", distance)
+                    print("Source :", metadata["source"])
+                    print("Page :", metadata["page_label"])
+                    print(document[:250])
+                    print("="*70)
+                    print("="*60)
 
                     if similarity_score >= score_threshold:
                         retrieved_docs.append(
@@ -102,9 +117,10 @@ if __name__ == "__main__":
 
     for doc in result:
 
-        print(doc['content'][:200])
-
+        print("=" * 60)
+        print(doc["metadata"])
+        print(doc["content"][:200])
         print(doc['similarity_score'])
-
         print()
+
 

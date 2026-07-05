@@ -1,8 +1,0 @@
-Machine Learning Introduction
-
-Machine Learning is a branch of Artificial Intelligence where computers learn from data and improve their performance without being explicitly programmed. Instead of following fixed instructions, ML models identify patterns in data and make predictions or decisions based on those patterns. It is widely used in real-world applications such as recommendation systems (YouTube, Netflix), voice assistants, image recognition, fraud detection, and self-driving cars.
-
-Machine Learning mainly works through algorithms that are trained on large datasets. The more quality data a model gets, the better its accuracy becomes over time. Some popular types of Machine Learning include supervised learning, unsupervised learning, and reinforcement learning.
-
-Because of its ability to learn and adapt, Machine Learning has become one of the most powerful technologies in modern Artificial Intelligence systems.
-    

@@ -45,50 +45,75 @@ class VectorStore:
 
     def add_documents(self, documents: List[Any], embeddings: np.ndarray):
         """
-        Add documents and their embeddings to the vector store
+        Add documents and their embeddings to the vector store.
 
         Args:
-            documents: List of langchain documents
-            embeddings: Coresponding embedding for the documents
-        """ 
+        documents: List of LangChain Documents
+        embeddings: Corresponding embeddings for the documents
+        """
+
         if len(documents) != len(embeddings):
             raise ValueError("Number of documents must match number of embeddings")
-        print(f"Adding {len(documents)} documents to the vector store")
 
-        # Prepare data for chromadb
+        total_documents = len(documents)
+        print(f"Adding {total_documents} documents to the vector store")
 
-        ids = []
-        metadatas = []
-        documents_text = []
-        embeddings_list = []
-
-        for i, (doc, embedding) in enumerate(zip(documents, embeddings)):
-            # Generate Unique id
-            doc_id = f"doc_{uuid.uuid4().hex[:8]}_{i}"
-            ids.append(doc_id)
-
-            # Prepare Metadata
-            metadata = dict(doc.metadata)
-            metadata["doc_index"] = i
-            metadata['content_length'] = len(doc.page_content)
-            metadatas.append(metadata)
-
-            # Document content
-            documents_text.append(doc.page_content)
-
-            # Embedding
-            embeddings_list.append(embedding.tolist())
-
-        # Add to collections
+        # ChromaDB max batch size
+        batch_size = 5000
+ 
         try:
-            self.collection.add(
-                ids = ids,
-                embeddings = embeddings_list,
-                metadatas = metadatas,
-                documents = documents_text
-            )
-            print(f"Successfully added {len(documents)} Documents to vector store")
+            for batch_start in range(0, total_documents, batch_size):
+                batch_end = min(batch_start + batch_size, total_documents)
+
+                print(
+                    f"\nProcessing Batch: {batch_start + 1} - {batch_end} "
+                    f"of {total_documents}"
+                )
+
+                ids = []
+                metadatas = []
+                documents_text = []
+                embeddings_list = []
+
+                # Prepare current batch
+                for i in range(batch_start, batch_end):
+                    doc = documents[i]
+                    embedding = embeddings[i]
+
+                    # Unique ID
+                    doc_id = f"doc_{uuid.uuid4().hex[:8]}_{i}"
+                    ids.append(doc_id)
+
+                    # Metadata
+                    metadata = dict(doc.metadata)
+                    metadata["doc_index"] = i
+                    metadata["content_length"] = len(doc.page_content)
+
+                    metadatas.append(metadata)
+
+                    # Document
+                    documents_text.append(doc.page_content)
+
+                    # Embedding
+                    embeddings_list.append(embedding.tolist())
+
+                # Insert current batch
+                self.collection.add(
+                    ids=ids,
+                    embeddings=embeddings_list,
+                    metadatas=metadatas,
+                    documents=documents_text,
+                )
+
+                print(
+                    f"✓ Batch inserted successfully "
+                    f"({batch_end}/{total_documents})"
+                )
+
+            print("\n===================================")
+            print("All documents inserted successfully!")
             print(f"Total documents in collection: {self.collection.count()}")
+            print("===================================\n")
         except Exception as e:
             print(f"Error adding documents to vector store: {e}")
             raise
