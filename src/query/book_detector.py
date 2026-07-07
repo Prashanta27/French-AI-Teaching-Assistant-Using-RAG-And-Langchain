@@ -74,16 +74,41 @@ class BookDetector:
 
     # -------------------------------------------------
 
-    def detect(self, query: str) -> Optional[Dict]:
+    def detect(
+        self,
+        query: str,
+        book_type_hint: Optional[str] = None,
+        level_hint: Optional[str] = None
+    ) -> Optional[Dict]:
         """
         Best single match -- used when the query refers to one book.
+
+        book_type_hint / level_hint: the already-detected book_type/
+        level for this query (from BookTypeDetector/LevelDetector),
+        if any. Callers should run those BEFORE this and pass their
+        results here.
+
+        Tie-breaking: when multiple books tie on match score (e.g.
+        "Cosmopolite A2" matches "Cosmopolite A1", "Cosmopolite A2
+        guide", AND "Cosmopolite A2 main book" all equally via the
+        bare-series candidate alone, since none of their specific
+        aliases matched verbatim), narrow down in this order:
+          1. level_hint, if given -- "A2" in the query should never
+             resolve to an A1 book just because both tied on the
+             bare series name.
+          2. book_type_hint, if given -- e.g. "teacher guide" should
+             resolve to the Teacher Guide, not the Student Book.
+          3. Prefer the Student Book -- a bare level/series mention
+             with no explicit type keyword almost always means the
+             student's own book, not the Teacher Guide/Answer Key.
+          4. Otherwise, first match found (stable, but arbitrary).
         """
 
         query = self._normalize(query)
 
-        best_match = None
-
         best_score = -1
+
+        tied_matches = []
 
         for book in self.books:
 
@@ -99,25 +124,86 @@ class BookDetector:
 
                         best_score = score
 
-                        best_match = book
+                        tied_matches = [book]
 
-        return best_match
+                    elif score == best_score:
+
+                        tied_matches.append(book)
+
+        if not tied_matches:
+
+            return None
+
+        return self._break_tie(tied_matches, book_type_hint, level_hint)
 
     # -------------------------------------------------
 
-    def detect_all(self, query: str) -> List[Dict]:
+    @staticmethod
+    def _break_tie(
+        candidates: List[Dict],
+        book_type_hint: Optional[str],
+        level_hint: Optional[str]
+    ) -> Dict:
+        """
+        Shared tie-breaking logic used by both detect() and
+        detect_all(): level_hint > book_type_hint > Student Book
+        default > first match. See detect()'s docstring for why.
+        """
+
+        if len(candidates) == 1:
+
+            return candidates[0]
+
+        if level_hint:
+
+            by_level = [b for b in candidates if b.get("level") == level_hint]
+
+            if by_level:
+
+                candidates = by_level
+
+        if len(candidates) > 1 and book_type_hint:
+
+            by_type = [b for b in candidates if b.get("book_type") == book_type_hint]
+
+            if by_type:
+
+                candidates = by_type
+
+        if len(candidates) > 1:
+
+            student_books = [
+                b for b in candidates
+                if b.get("book_type") == "Student Book"
+            ]
+
+            if student_books:
+
+                candidates = student_books
+
+        return candidates[0]
+
+    # -------------------------------------------------
+
+    def detect_all(
+        self,
+        query: str,
+        book_type_hint: Optional[str] = None,
+        level_hint: Optional[str] = None
+    ) -> List[Dict]:
         """
         All distinct books/series referenced in the query -- used
         for Comparison-type intents where more than one book or
         series may be mentioned (e.g. "Compare Cosmopolite and
         Tendances"). Returns at most one representative book per
-        distinct series matched, picking the most specific match
-        available for that series.
+        distinct series matched, using the same tie-breaking as
+        detect() (level_hint > book_type_hint > Student Book default)
+        when a series has multiple equally-specific matches.
         """
 
         query = self._normalize(query)
 
-        best_per_series: Dict[str, Tuple[int, Dict]] = {}
+        tied_by_series: Dict[str, Tuple[int, List[Dict]]] = {}
 
         for book in self.books:
 
@@ -131,13 +217,22 @@ class BookDetector:
 
                     score = len(candidate)
 
-                    current = best_per_series.get(series)
+                    current_score, current_list = tied_by_series.get(series, (-1, []))
 
-                    if current is None or score > current[0]:
+                    if score > current_score:
 
-                        best_per_series[series] = (score, book)
+                        tied_by_series[series] = (score, [book])
 
-        results = [book for _, book in best_per_series.values()]
+                    elif score == current_score:
+
+                        current_list.append(book)
+
+                        tied_by_series[series] = (current_score, current_list)
+
+        results = [
+            self._break_tie(books, book_type_hint, level_hint)
+            for _, books in tied_by_series.values()
+        ]
 
         results.sort(key=lambda b: len(b.get("series", "")), reverse=True)
 

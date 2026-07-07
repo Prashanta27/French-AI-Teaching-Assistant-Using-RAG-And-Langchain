@@ -1,13 +1,3 @@
-print("before vector store import")
-
-from src.vector_store import VectorStore
-
-print("before embedding import")
-
-from src.embedding import EmbeddingManager
-
-print("all imports successful")
-
 from src.vector_store import VectorStore
 from src.embedding import EmbeddingManager
 from typing import List, Dict, Any

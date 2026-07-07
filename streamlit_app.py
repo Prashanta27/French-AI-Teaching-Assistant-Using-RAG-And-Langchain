@@ -724,7 +724,7 @@ def call_api(question):
     except requests.exceptions.ConnectionError:
         return (
             "⚠️ Could not reach the backend.\n\n"
-            "Start it with:\n```\nuvicorn main:app --reload\n```", False
+            "Start it with:\n```\nuvicorn api:app --reload\n```", False
         )
     except Exception as e:
         return f"Unexpected error: {e}", False

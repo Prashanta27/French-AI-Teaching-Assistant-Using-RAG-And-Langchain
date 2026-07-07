@@ -33,3 +33,10 @@ requests==2.34.2
 cffi==2.0.0
 cryptography==49.0.0
 pycparser==3.0
+
+
+# download in your system 
+# 1. Tesseract OCR and add path
+# 2. Ghostscript and add path
+
+ocrmypdf==17.8.0

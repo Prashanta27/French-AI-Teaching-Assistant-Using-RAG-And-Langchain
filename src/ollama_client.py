@@ -1,103 +1,165 @@
+"""
+LLMGenerator
+============
+
+The RAG pipeline's entry point: takes a raw user question, runs it
+through query understanding + retrieval, builds a prompt, and calls
+Ollama for the final answer.
+
+Pipeline:
+
+    question
+      -> QueryAnalyzer.analyze()   (intent/book/level/structure/...)
+      -> SearchPlanner.plan()      (what to retrieve, and how)
+      -> Retriever.retrieve()      (dispatches to Exact/Semantic/
+                                     Metadata based on plan.action)
+      -> PromptBuilder.build()
+      -> Ollama /api/chat
+"""
+
+import logging
+
 import requests
 
+from src.query.query_analyzer import QueryAnalyzer
+from planner.search_planner import SearchPlanner
+from src.retriever.metadata_filter import MetadataFilterEngine
+from src.retriever.exact_retriever import ExactRetriever
+from src.retriever.semantic_retriever import SemanticRetriever
+from src.retriever.retriever import Retriever
 from src.vector_store import VectorStore
 from src.embedding import EmbeddingManager
-from src.retriever import RAGRetriever
 from src.prompt_builder import PromptBuilder
+
+
+logger = logging.getLogger(__name__)
+
 
 class LLMGenerator:
 
     def __init__(
-            self,
-            model: str = "llama3.2",
-            host: str = "http://localhost:11434"
+        self,
+        model: str = "llama3.2",
+        host: str = "http://localhost:11434",
+        knowledge_file: str = "data/knowledge_index.json"
     ):
 
         self.model = model
+
         self.host = host
 
+        print("Loading Query Understanding pipeline...")
+
+        self.query_analyzer = QueryAnalyzer()
+
+        self.search_planner = SearchPlanner()
+
+        print("Loading Metadata Filter Engine...")
+
+        metadata_engine = MetadataFilterEngine(knowledge_file=knowledge_file)
+
         print("Loading Vector Store...")
-        self.vector_store = VectorStore()
+
+        vector_store = VectorStore()
 
         print("Loading Embedding Model...")
-        self.embedding_manager = EmbeddingManager()
 
-        print("Initializing Retriever...")
-        self.retriever = RAGRetriever(
+        embedding_manager = EmbeddingManager()
 
-            self.vector_store,
+        print("Initializing Retrievers...")
 
-            self.embedding_manager
-
+        self.retriever = Retriever(
+            metadata_engine=metadata_engine,
+            exact_retriever=ExactRetriever(metadata_engine),
+            semantic_retriever=SemanticRetriever(
+                vector_store, embedding_manager, metadata_engine
+            )
         )
 
+    # -----------------------------------------------------
+    # Public API
+    # -----------------------------------------------------
 
-    def generate(self, question: str, top_k: int = 8) -> str:
+    def generate(self, question: str) -> str:
 
-        print("\nRetrieving Relevant Documents...\n")
+        analysis = self.query_analyzer.analyze(question)
 
-        docs = self.retriever.retrieve(question, top_k=top_k)
+        plan = self.search_planner.plan(analysis)
 
-        context = ""
-
-        if docs:
-            for doc in docs:
-                context += f"""
-
-Retrieved Passage (Score: {doc['similarity_score']:.3f})
-
-{doc['content']}
-
-------------------------------------------------------------
-
-"""
-
-
-        prompt = PromptBuilder.build(context=context,question=question)
-
-
-        response = requests.post(
-
-            f"{self.host}/api/chat",
-
-            json={
-
-                "model": self.model,
-
-                "messages": [
-
-                    {
-
-                        "role": "user",
-
-                        "content": prompt
-
-                    }
-
-                ],
-
-                "stream": False
-
-            }
-
+        logger.info(
+            "intent=%s action=%s llm_task=%s needs_retrieval=%s",
+            analysis.intent, plan.action, plan.llm_task, plan.needs_retrieval
         )
 
+        bundle = self.retriever.retrieve(plan)
 
-        return response.json()['message']['content']
+        prompt = PromptBuilder.build(
+            context=bundle.context,
+            question=question,
+            llm_task=plan.llm_task
+        )
+
+        return self._call_ollama(prompt)
+
+    # -----------------------------------------------------
+    # Ollama call
+    # -----------------------------------------------------
+
+    def _call_ollama(self, prompt: str) -> str:
+
+        try:
+
+            response = requests.post(
+                f"{self.host}/api/chat",
+                json={
+                    "model": self.model,
+                    "messages": [
+                        {"role": "user", "content": prompt}
+                    ],
+                    "stream": False
+                },
+                timeout=300
+            )
+
+            response.raise_for_status()
+
+        except requests.exceptions.ConnectionError:
+
+            logger.exception("Could not connect to Ollama at %s.", self.host)
+
+            return (
+                f"I couldn't reach the language model at {self.host}. "
+                f"Is Ollama running?"
+            )
+
+        except requests.exceptions.RequestException:
+
+            logger.exception("Ollama request failed.")
+
+            return "The language model request failed. Please try again."
+
+        try:
+
+            return response.json()["message"]["content"]
+
+        except (KeyError, ValueError):
+
+            logger.exception("Unexpected Ollama response shape: %s", response.text[:500])
+
+            return "Received an unexpected response from the language model."
 
 
-if __name__ == "__main__":
+# ---------------------------------------------------------
+# CLI entry point
+# ---------------------------------------------------------
 
+if __name__ == "__main__":  # CLI mode -- python -m src.ollama_client
 
-    generator = LLMGenerator(
+    logging.basicConfig(level=logging.INFO)
 
-        model="llama3.2"
-
-    )
-
+    generator = LLMGenerator(model="llama3.2")
 
     while True:
-
 
         question = input("\nAsk French Question (q to quit): ")
 
@@ -106,6 +168,7 @@ if __name__ == "__main__":
             break
 
         answer = generator.generate(question)
+
         print("\n")
         print("=" * 80)
         print(answer)

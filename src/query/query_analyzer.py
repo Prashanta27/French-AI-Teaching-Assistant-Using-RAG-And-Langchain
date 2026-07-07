@@ -87,9 +87,26 @@ class QueryAnalyzer:
         # one of the two.
         # ---------------------------
 
-        best_book = self.book_detector.detect(query)
+        # Detect an explicit book_type signal (e.g. "teacher guide")
+        # BEFORE book detection, so BookDetector can use it to break
+        # ties between same-level/series books of different types
+        # (e.g. "Cosmopolite A2" alone matches both the guide and
+        # the main book equally -- the explicit hint decides which).
+        book_type_query_hint = self.book_type_detector.detect(query)
 
-        all_books = self.book_detector.detect_all(query)
+        level_query_hint = self.level_detector.detect(query)
+
+        best_book = self.book_detector.detect(
+            query,
+            book_type_hint=book_type_query_hint,
+            level_hint=level_query_hint
+        )
+
+        all_books = self.book_detector.detect_all(
+            query,
+            book_type_hint=book_type_query_hint,
+            level_hint=level_query_hint
+        )
 
         has_book = best_book is not None
 
@@ -108,7 +125,7 @@ class QueryAnalyzer:
 
         is_single_book_context = len(all_books) <= 1
 
-        level = self.level_detector.detect(query)
+        level = level_query_hint
 
         if level is None and best_book and is_single_book_context:
 
@@ -124,7 +141,7 @@ class QueryAnalyzer:
         # must not silently inject its level/type as a filter.
         # ---------------------------
 
-        book_type = self.book_type_detector.detect(query)
+        book_type = book_type_query_hint
 
         if book_type is None and best_book and is_single_book_context:
 

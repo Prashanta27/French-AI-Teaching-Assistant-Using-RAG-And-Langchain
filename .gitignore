@@ -2,7 +2,7 @@
 # Vector Database
 data/pdf/
 data/vector_store/
-
+data/pdf_originals_backup/
 # Chroma
 chroma.sqlite3
 
