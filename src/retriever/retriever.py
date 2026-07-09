@@ -18,7 +18,7 @@ mapping themselves.
 
 import logging
 from dataclasses import dataclass, field
-from typing import Any, List
+from typing import Any, Dict, List
 
 from src.retriever.metadata_filter import MetadataFilterEngine
 from src.retriever.exact_retriever import ExactRetriever
@@ -49,10 +49,31 @@ class RetrievalBundle:
     # data (source titles/pages for a citation UI, for example)
     # isn't stuck re-parsing the formatted context string.
 
+    hybrid_fallback_used: bool = False
+    # True when an exact lookup found nothing and this bundle's
+    # content actually came from a semantic-search fallback instead.
+    # Useful for logging/UI ("approximate match" disclosure) without
+    # having to diff action vs raw_results' shape to figure it out.
+
 
 # ---------------------------------------------------------
-# Retriever
+# Fallback plan adapter
 # ---------------------------------------------------------
+
+@dataclass
+class _SemanticFallbackPlan:
+    """
+    SemanticRetriever.retrieve() expects a SearchPlan-shaped object
+    (.action/.filters/.target_books/.search_text/.top_k). When an
+    exact lookup fails, we build one of these on the fly instead of
+    needing a real SearchPlan just to retry as a semantic search.
+    """
+
+    action: str
+    filters: Dict[str, Any]
+    target_books: List[str]
+    search_text: str
+    top_k: int = 5
 
 class Retriever:
 
@@ -121,12 +142,86 @@ class Retriever:
 
         context, found = self._format_exact(results)
 
+        if not found and self.semantic_retriever is not None:
+
+            hybrid = self._hybrid_fallback(plan, reason="exact lookup found nothing")
+
+            if hybrid is not None:
+
+                return hybrid
+
         return RetrievalBundle(
             action=plan.action,
             found=found,
             context=context,
             raw_results=results
         )
+
+    # -----------------------------------------------------
+    # Hybrid fallback: exact lookup failed (wrong page-offset, OCR
+    # gap, content genuinely not at that exact location, ...) --
+    # rather than returning empty-handed, retry as a semantic search
+    # scoped to the same book/filters the exact lookup was using.
+    # This is what "Hybrid Retrieval" means in this codebase: not
+    # running both simultaneously on every query (that would double
+    # latency/cost for no benefit on the ~90% of exact lookups that
+    # already succeed), but falling back intelligently when the
+    # deterministic path comes up empty.
+    # -----------------------------------------------------
+
+    def _hybrid_fallback(self, plan, reason: str):
+
+        logger.info("Hybrid fallback triggered (%s) -- retrying as semantic search.", reason)
+
+        fallback_plan = _SemanticFallbackPlan(
+            action="semantic_search",
+            filters=dict(plan.filters),
+            target_books=list(plan.target_books),
+            search_text=self._exact_location_to_text(plan),
+            top_k=3
+        )
+
+        results = self.semantic_retriever.retrieve(fallback_plan)
+
+        context, found = self._format_semantic(results)
+
+        if not found:
+
+            return None
+
+        return RetrievalBundle(
+            action=plan.action,
+            found=True,
+            context=context,
+            raw_results=results,
+            hybrid_fallback_used=True
+        )
+
+    # -----------------------------------------------------
+
+    @staticmethod
+    def _exact_location_to_text(plan) -> str:
+        """
+        Turns exact_location + search_text into a search string a
+        semantic query can actually use -- "page 24, exercise 3" on
+        its own is meaningless to an embedding model, so fold in
+        whatever descriptive text the original query had.
+        """
+
+        location_bits = [
+            f"chapter {v}" if k == "chapter" else
+            f"page {v}" if k == "page" else
+            f"exercise {v}" if k == "exercise" else
+            f"activity {v}" if k == "activity" else
+            f"line {v}" if k == "line" else None
+            for k, v in (plan.exact_location or {}).items()
+        ]
+
+        location_text = " ".join(b for b in location_bits if b)
+
+        base_text = getattr(plan, "search_text", "") or ""
+
+        return f"{location_text} {base_text}".strip()
 
     # -----------------------------------------------------
 

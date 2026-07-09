@@ -40,3 +40,4 @@ pycparser==3.0
 # 2. Ghostscript and add path
 
 ocrmypdf==17.8.0
+pytest==9.1.1

@@ -24,8 +24,7 @@
         "book_id": "book_002",
         "title": "C4 LE",
         "aliases": [
-            "c4 le",
-            "c4le"
+            "c4 le"
         ],
         "filename": "C4_LE_Transcriptions.pdf",
         "filepath": "data/pdf/C4_LE_Transcriptions.pdf",
@@ -107,9 +106,7 @@
     {
         "book_id": "book_006",
         "title": "et",
-        "aliases": [
-            "et"
-        ],
+        "aliases": [],
         "filename": "corrigés et transcriptions.pdf",
         "filepath": "data/pdf/corrigés et transcriptions.pdf",
         "series": "General",
@@ -193,7 +190,6 @@
         "book_id": "book_010",
         "title": "cosmopolite 4 de l eleve",
         "aliases": [
-            "4 de l eleve",
             "cosmo 4 de l eleve",
             "cosmopolite 4 de l eleve",
             "cosmopolite4deleleve"
@@ -304,7 +300,6 @@
         "book_id": "book_015",
         "title": "Cosmopolite A2",
         "aliases": [
-            "a2",
             "cosmo a2",
             "cosmopolite a2",
             "cosmopolitea2"
@@ -327,7 +322,6 @@
         "book_id": "book_016",
         "title": "Cosmopolite A2",
         "aliases": [
-            "a2",
             "cosmo a2",
             "cosmopolite a2",
             "cosmopolitea2"
@@ -350,7 +344,6 @@
         "book_id": "book_017",
         "title": "Cosmopolite B2",
         "aliases": [
-            "b2",
             "cosmo b2",
             "cosmopolite b2",
             "cosmopoliteb2"
@@ -394,7 +387,6 @@
         "book_id": "book_019",
         "title": "lexique dossier cosmopolite1",
         "aliases": [
-            "lexique dossier 1",
             "lexique dossier cosmo1",
             "lexique dossier cosmopolite1",
             "lexiquedossiercosmopolite1"
@@ -471,7 +463,28 @@
         "language": "French",
         "total_pages": 23,
         "chunks": 0,
-        "chapters": [],
+        "chapters": [
+            {
+                "number": 1,
+                "start_page": 4,
+                "end_page": 5
+            },
+            {
+                "number": 2,
+                "start_page": 6,
+                "end_page": 7
+            },
+            {
+                "number": 3,
+                "start_page": 8,
+                "end_page": 9
+            },
+            {
+                "number": 4,
+                "start_page": 10,
+                "end_page": 23
+            }
+        ],
         "has_toc": false,
         "is_indexed": true
     },
@@ -834,7 +847,6 @@
         "book_id": "book_039",
         "title": "cosmopolite1 LE",
         "aliases": [
-            "1 le",
             "cosmo1 le",
             "cosmopolite1 le",
             "cosmopolite1le"

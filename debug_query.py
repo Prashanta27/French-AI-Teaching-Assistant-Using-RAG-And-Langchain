@@ -71,26 +71,64 @@ def main():
     for r in results:
         print(json.dumps(r.to_dict(), indent=2, default=str, ensure_ascii=False))
 
-    # 5. If a book matched, check whether PyMuPDF can even read text from it
-    # (scanned/image-only PDFs return empty text -- a very common reason
-    # heading-scan finds nothing).
-    if matches:
+    # 5. Check the ACTUAL book that was targeted (not just the first
+    # catalog match, which may be a completely different book) --
+    # specifically the requested page, if any, plus a few pages
+    # around it.
+    target_titles = set(plan.target_books) if plan.target_books else set()
 
-        print("\n--- Raw text check on the first matching PDF (first 3 pages) ---")
+    targeted = [b for b in all_books if b.get("title") in target_titles] or matches
+
+    if targeted:
+
+        book = targeted[0]
+
+        print(f"\n--- Raw text check on the ACTUALLY TARGETED book: {book['title']!r} ---")
+        print(f"    filepath: {book['filepath']}")
 
         import fitz
 
-        filepath = matches[0]["filepath"]
-
         try:
-            doc = fitz.open(filepath)
-            for i in range(min(3, len(doc))):
-                text = doc[i].get_text().strip()
-                preview = text[:150].replace("\n", " ") if text else "<<EMPTY -- likely a scanned/image PDF with no text layer>>"
-                print(f"  Page {i+1}: {preview}")
+
+            doc = fitz.open(book["filepath"])
+
+            print(f"    total pages in PDF: {len(doc)}")
+
+            requested_page = analysis.page
+
+            if requested_page:
+
+                idx = requested_page - 1
+
+                if 0 <= idx < len(doc):
+
+                    text = doc[idx].get_text().strip()
+
+                    preview = text[:400] if text else "<<EMPTY -- no text on this page>>"
+
+                    print(f"\n    Requested page {requested_page} (PDF index {idx}) full-ish text:")
+                    print(f"    {preview}")
+
+                else:
+
+                    print(f"\n    Requested page {requested_page} is OUT OF RANGE "
+                          f"(PDF only has {len(doc)} pages).")
+
+            else:
+
+                for i in range(min(3, len(doc))):
+
+                    text = doc[i].get_text().strip()
+
+                    preview = text[:150].replace("\n", " ") if text else "<<EMPTY>>"
+
+                    print(f"    Page {i+1}: {preview}")
+
             doc.close()
+
         except Exception as e:
-            print(f"  Could not open '{filepath}': {e}")
+
+            print(f"    Could not open '{book['filepath']}': {e}")
 
 
 if __name__ == "__main__":

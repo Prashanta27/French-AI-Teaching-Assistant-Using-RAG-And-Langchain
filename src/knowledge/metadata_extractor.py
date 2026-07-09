@@ -66,7 +66,15 @@ class MetadataExtractor:
 
             aliases.add(title.lower().replace("cosmopolite", "cosmo"))
 
-            aliases.add(title.lower().replace("cosmopolite", ""))
+            # NOTE: deliberately NOT adding
+            # title.lower().replace("cosmopolite", "") here.
+            # Stripping the series name entirely tends to leave a
+            # short, generic leftover fragment (e.g. "cosmopolite1 LE"
+            # -> "1 le") that can accidentally substring-match
+            # unrelated text -- "...for A1 learners" contains "1 le"
+            # as a coincidental substring, which caused a real false
+            # positive book match. "cosmo"-substitution is safe to
+            # keep since it's still a distinctive word.
 
         if "tendances" in title.lower():
 
@@ -78,7 +86,13 @@ class MetadataExtractor:
 
             for a in aliases
 
-            if len(a.strip()) > 1
+            # Minimum length guards against short, generic fragments
+            # matching unrelated query text by coincidence. 1 was
+            # far too permissive -- even 4 wasn't enough ("1 le" is
+            # 4 chars). This is deliberately generous rather than
+            # perfectly tuned; revisit if a legitimate short alias
+            # (e.g. a genuinely short book code) ever gets excluded.
+            if len(a.strip()) >= 5
 
         ]
 

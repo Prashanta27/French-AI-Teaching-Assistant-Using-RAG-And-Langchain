@@ -58,9 +58,9 @@ class QueryAnalyzer:
     Combines all detectors into one structured query.
     """
 
-    def __init__(self):
+    def __init__(self, knowledge_file: str = "data/knowledge_index.json"):
 
-        self.book_detector = BookDetector()
+        self.book_detector = BookDetector(knowledge_file=knowledge_file)
 
         self.level_detector = LevelDetector()
 

@@ -28,6 +28,7 @@ import re
 import threading
 from dataclasses import dataclass, asdict
 from typing import Any, Dict, List, Optional, Tuple
+
 import fitz  # PyMuPDF
 
 
@@ -109,10 +110,21 @@ class ExactRetriever:
     # "Exercise-4", "Exercise #4".
     _SEP = r'[\s:\-#]*'
 
+    # Upper bound on how much text a single exercise/activity/chapter
+    # heading-block extraction can return, even when boundary
+    # detection fails to find the next heading (e.g. due to OCR
+    # noise). ~1500 chars is generous for a real exercise/activity
+    # block while still preventing a runaway capture of unrelated
+    # later content.
+    MAX_HEADING_BLOCK_CHARS = 1500
+
     CHAPTER_HEADING_PATTERNS = [
         rf'chapter{_SEP}{{n}}\b',
         rf'chapitre{_SEP}{{n}}\b',
         rf'unit{_SEP}{{n}}\b',
+        # French "Unité" (with accent) -- e.g. Tendances books use
+        # this as their top-level structure, not "chapitre"/"dossier".
+        rf'unit[ée]{_SEP}{{n}}\b',
         rf'lesson{_SEP}{{n}}\b',
         rf'module{_SEP}{{n}}\b',
         rf'dossier{_SEP}{{n}}\b',
@@ -123,13 +135,22 @@ class ExactRetriever:
         rf'exercise{_SEP}{{n}}\b',
         rf'exercice{_SEP}{{n}}\b',
         rf'ex\.?{_SEP}{{n}}\b',
-        rf'exercice\s*n[°o]\s*{{n}}\b'
+        rf'exercice\s*n[°o]\s*{{n}}\b',
+        # Fallback: many workbooks number exercises as bare
+        # "1.", "2.", "3." with no "Exercise"/"Exercice" word at all.
+        # Tried LAST -- only used when none of the explicit-word
+        # patterns above match anywhere, to avoid mistaking some
+        # other numbered list (vocabulary, table of contents, ...)
+        # for an exercise heading when a real one exists.
+        rf'{{n}}\.\s'
     ]
 
     ACTIVITY_HEADING_PATTERNS = [
         rf'activity{_SEP}{{n}}\b',
         rf'activit[ée]{_SEP}{{n}}\b',
-        rf'activit[ée]\s*n[°o]\s*{{n}}\b'
+        rf'activit[ée]\s*n[°o]\s*{{n}}\b',
+        # Same bare-numbered fallback as exercises, tried last.
+        rf'{{n}}\.\s'
     ]
 
     # "Family" patterns (no specific number) used only to find the
@@ -137,18 +158,18 @@ class ExactRetriever:
     # e.g. so "Exercise 4" content stops before "Exercise 5" starts
     # instead of running to the end of the page.
     CHAPTER_FAMILY_PATTERN = (
-        rf'(?:chapter|chapitre|unit|lesson|module|dossier|le[cç]on)'
+        rf'(?:chapter|chapitre|unit[ée]?|lesson|module|dossier|le[cç]on)'
         rf'{_SEP}\d+'
     )
 
     EXERCISE_FAMILY_PATTERN = (
-        rf'(?:exercise|exercice|ex\.?)'
-        rf'(?:{_SEP}\d+|\s*n[°o]\s*\d+)'
+        rf'(?:(?:exercise|exercice|ex\.?)'
+        rf'(?:{_SEP}\d+|\s*n[°o]\s*\d+)|\d+\.\s)'
     )
 
     ACTIVITY_FAMILY_PATTERN = (
-        rf'(?:activity|activit[ée])'
-        rf'(?:{_SEP}\d+|\s*n[°o]\s*\d+)'
+        rf'(?:(?:activity|activit[ée])'
+        rf'(?:{_SEP}\d+|\s*n[°o]\s*\d+)|\d+\.\s)'
     )
 
     def __init__(self, metadata_engine, default_page_offset: int = 0):
@@ -605,6 +626,15 @@ class ExactRetriever:
 
         end = self._next_family_boundary(text, family_pattern, after=match.end())
 
+        # Safety cap: if OCR noise breaks the numbering pattern on the
+        # real next heading (garbled characters right after the
+        # number, e.g. "2.ee" instead of "2. "), the boundary search
+        # can sail past it and capture way more than intended -- cut
+        # it off at a generous but bounded length rather than
+        # potentially returning unrelated content from much further
+        # down the page.
+        end = min(end, start + self.MAX_HEADING_BLOCK_CHARS)
+
         content = text[start:end].strip()
 
         bbox = self._bbox_for(page, match.group())
@@ -753,6 +783,8 @@ class ExactRetriever:
                 start = match.start()
 
                 end = self._next_family_boundary(text, family, after=match.end())
+
+                end = min(end, start + self.MAX_HEADING_BLOCK_CHARS)
 
                 content = text[start:end].strip()
 
