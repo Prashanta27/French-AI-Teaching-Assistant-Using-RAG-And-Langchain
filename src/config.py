@@ -1,3 +1,15 @@
+from dotenv import load_dotenv
+import os
+
+load_dotenv()
+
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+
+
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "openai")
+EMBEDDING_PROVIDER = os.getenv("EMBEDDING_PROVIDER", "openai")
+
+
 # ==========================================
 # Embedding Configuration
 # ==========================================

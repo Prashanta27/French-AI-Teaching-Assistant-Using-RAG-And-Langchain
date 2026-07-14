@@ -26,7 +26,12 @@ ACTION_INTENTS: Dict[str, List[str]] = {
         "best book",
         "should i use",
         "what should i study",
-        "any suggestion"
+        "any suggestion",
+        "reference a book",
+        "a book where",
+        "a book to learn",
+        "book for learning",
+        "what book"
     ],
 
     "Comparison": [

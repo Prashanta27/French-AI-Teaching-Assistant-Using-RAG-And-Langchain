@@ -9,7 +9,7 @@ from src.file_tracker import (
 from src.knowledge.knowledge_index_builder import KnowledgeIndexBuilder
 from src.data_loader import process_pdf
 from src.split_document import split_documents, CatalogMetadataResolver
-from src.embedding import EmbeddingManager
+from src.embedding.embedding_factory import get_embedding
 from src.vector_store import VectorStore
 
 
@@ -76,7 +76,7 @@ def ingest():
 
     print("\nGenerating embeddings...")
 
-    embedding_manager = EmbeddingManager()
+    embedding_manager = get_embedding()
 
     texts = [doc.page_content for doc in chunks]
 

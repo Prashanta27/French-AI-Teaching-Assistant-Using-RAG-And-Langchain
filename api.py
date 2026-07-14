@@ -19,9 +19,9 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
-from src.ollama_client import LLMGenerator
+from src.LLM.openai_client import OpenAILLM
 
-
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Populated at startup, used by the /ask endpoint. A module-level
@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 # deployment; if you later run multiple worker processes, each
 # process gets its own instance (each with its own loaded model) --
 # fine for correctness, just means N x the memory/startup cost.
-_generator: Optional[LLMGenerator] = None
+_generator: Optional[OpenAILLM] = None
 
 
 @asynccontextmanager
@@ -37,9 +37,9 @@ async def lifespan(app: FastAPI):
 
     global _generator
 
-    logger.info("Starting up: loading LLMGenerator...")
+    logger.info("Starting up: loading OpenAILLM...")
 
-    _generator = LLMGenerator()
+    _generator = OpenAILLM()
 
     logger.info("Startup complete.")
 

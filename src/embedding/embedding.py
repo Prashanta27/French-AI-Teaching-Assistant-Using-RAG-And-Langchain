@@ -8,7 +8,7 @@ import numpy as np
 class EmbeddingManager:
     """Handles Document Embedding Generation Using SentenceTransformer"""
 
-    def __init__(self, model_name: str = "all-MiniLM-L6-v2"):
+    def __init__(self, model_name: str = "intfloat/multilingual-e5-base"):
         """
         Initialize the embedding manager
 

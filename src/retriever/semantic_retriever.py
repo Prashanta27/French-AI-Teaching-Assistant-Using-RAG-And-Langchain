@@ -103,7 +103,8 @@ class SemanticRetriever:
         embedding_manager,
         metadata_engine: MetadataFilterEngine,
         overfetch_multiplier: int = 5,
-        min_overfetch: int = 20
+        min_overfetch: int = 20,
+        reranker=None
     ):
 
         self.vector_store = vector_store
@@ -115,6 +116,13 @@ class SemanticRetriever:
         self.overfetch_multiplier = overfetch_multiplier
 
         self.min_overfetch = min_overfetch
+
+        self.reranker = reranker
+        # Optional CrossEncoderReranker. When set, _query() overfetches
+        # a larger candidate pool (already does, via
+        # overfetch_multiplier) and lets the reranker pick the real
+        # top_k from it instead of trusting bi-encoder distance alone.
+        # None (default) preserves the original behavior exactly.
 
     # -----------------------------------------------------
     # Public API
@@ -385,7 +393,7 @@ class SemanticRetriever:
                 warning="The vector store query failed."
             )]
 
-        return self._parse_results(raw, top_k, score_threshold)
+        return self._parse_results(raw, top_k, score_threshold, query_text)
 
     # -----------------------------------------------------
 
@@ -393,7 +401,8 @@ class SemanticRetriever:
         self,
         raw: Dict,
         top_k: int,
-        score_threshold: float
+        score_threshold: float,
+        query_text: str
     ) -> List[SemanticRetrievalResult]:
 
         documents = raw.get("documents") or [[]]
@@ -410,7 +419,12 @@ class SemanticRetriever:
 
         ids = raw["ids"][0]
 
-        results = []
+        # Collect every above-threshold candidate from the overfetched
+        # pool first -- do NOT truncate to top_k yet. If a reranker is
+        # configured, it needs the full pool to have anything
+        # meaningful to re-rank; truncating here would just hand it
+        # the bi-encoder's top_k and defeat the point.
+        candidates = []
 
         for doc_id, document, metadata, distance in zip(
             ids, documents[0], metadatas, distances
@@ -426,24 +440,34 @@ class SemanticRetriever:
 
                 continue
 
-            results.append(SemanticRetrievalResult(
+            candidates.append(SemanticRetrievalResult(
                 book_id=metadata.get("book_id"),
                 title=metadata.get("title") or metadata.get("source"),
                 found=True,
                 page=metadata.get("page") or metadata.get("page_label"),
                 content=document,
                 score=similarity_score,
-                rank=len(results) + 1,
                 metadata=metadata
             ))
 
-            if len(results) >= top_k:
+        if self.reranker is not None and candidates:
 
-                break
+            results = self.reranker.rerank(query_text, candidates, top_k)
+
+        else:
+
+            candidates.sort(key=lambda c: c.score, reverse=True)
+
+            results = candidates[:top_k]
+
+        for i, result in enumerate(results, start=1):
+
+            result.rank = i
 
         logger.info(
-            "Retrieved %d/%d candidates above score_threshold=%.2f.",
-            len(results), len(ids), score_threshold
+            "Retrieved %d/%d candidates above score_threshold=%.2f%s.",
+            len(results), len(ids), score_threshold,
+            " (reranked)" if self.reranker is not None else ""
         )
 
         return results

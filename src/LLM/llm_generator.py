@@ -4,7 +4,7 @@ LLMGenerator
 
 The RAG pipeline's entry point: takes a raw user question, runs it
 through query understanding + retrieval, builds a prompt, and calls
-Ollama for the final answer.
+the configured LLM provider for the final answer.
 
 Pipeline:
 
@@ -14,22 +14,23 @@ Pipeline:
       -> Retriever.retrieve()      (dispatches to Exact/Semantic/
                                      Metadata based on plan.action)
       -> PromptBuilder.build()
-      -> Ollama /api/chat
+      -> get_llm(...).generate()   (OpenAI by default, see llm_factory.py)
 """
 
 import logging
-
-import requests
+from typing import Optional
 
 from src.query.query_analyzer import QueryAnalyzer
 from planner.search_planner import SearchPlanner
 from src.retriever.metadata_filter import MetadataFilterEngine
 from src.retriever.exact_retriever import ExactRetriever
 from src.retriever.semantic_retriever import SemanticRetriever
+from src.retriever.reranker import CrossEncoderReranker
 from src.retriever.retriever import Retriever
 from src.vector_store import VectorStore
-from src.embedding import EmbeddingManager
 from src.prompt_builder import PromptBuilder
+from src.LLM.llm_factory import get_llm
+from src.embedding.embedding_factory import get_embedding
 
 
 logger = logging.getLogger(__name__)
@@ -39,15 +40,23 @@ class LLMGenerator:
 
     def __init__(
         self,
-        model: str = "llama3.2",
-        host: str = "http://localhost:11434",
-        knowledge_file: str = "data/knowledge_index.json"
+        model: Optional[str] = None,
+        llm_provider: Optional[str] = None,
+        embedding_provider: Optional[str] = None,
+        knowledge_file: str = "data/knowledge_index.json",
     ):
-
-        self.model = model
-
-        self.host = host
-
+        """
+        Args:
+            model: Model name passed through to the chosen LLM client
+                (e.g. "gpt-4o-mini"). None uses that client's own default.
+            llm_provider: Which LLM backend to use ("openai", ...).
+                None falls back to config.LLM_PROVIDER, then "openai".
+            embedding_provider: Which embedding backend to use
+                ("openai", "sentence_transformer", ...). None falls
+                back to config.EMBEDDING_PROVIDER, then "openai".
+            knowledge_file: Path to the catalog JSON used for metadata
+                filtering.
+        """
         print("Loading Query Understanding pipeline...")
 
         self.query_analyzer = QueryAnalyzer()
@@ -64,15 +73,26 @@ class LLMGenerator:
 
         print("Loading Embedding Model...")
 
-        embedding_manager = EmbeddingManager()
+        embedding_manager = get_embedding(embedding_provider)
+
+        print("Loading LLM Client...")
+
+        llm_kwargs = {"model": model} if model else {}
+        self.llm = get_llm(llm_provider, **llm_kwargs)
 
         print("Initializing Retrievers...")
+
+        # The reranker's model only loads on first actual use (lazy),
+        # so constructing it here doesn't slow down startup or
+        # require network access until a semantic search actually runs.
+        reranker = CrossEncoderReranker()
 
         self.retriever = Retriever(
             metadata_engine=metadata_engine,
             exact_retriever=ExactRetriever(metadata_engine),
             semantic_retriever=SemanticRetriever(
-                vector_store, embedding_manager, metadata_engine
+                vector_store, embedding_manager, metadata_engine,
+                reranker=reranker
             )
         )
 
@@ -99,65 +119,22 @@ class LLMGenerator:
             llm_task=plan.llm_task
         )
 
-        return self._call_ollama(prompt)
-
-    # -----------------------------------------------------
-    # Ollama call
-    # -----------------------------------------------------
-
-    def _call_ollama(self, prompt: str) -> str:
-
         try:
-
-            response = requests.post(
-                f"{self.host}/api/chat",
-                json={
-                    "model": self.model,
-                    "messages": [
-                        {"role": "user", "content": prompt}
-                    ],
-                    "stream": False
-                },
-                timeout=300
-            )
-
-            response.raise_for_status()
-
-        except requests.exceptions.ConnectionError:
-
-            logger.exception("Could not connect to Ollama at %s.", self.host)
-
-            return (
-                f"I couldn't reach the language model at {self.host}. "
-                f"Is Ollama running?"
-            )
-
-        except requests.exceptions.RequestException:
-
-            logger.exception("Ollama request failed.")
-
+            return self.llm.generate(prompt)
+        except Exception:
+            logger.exception("LLM call failed.")
             return "The language model request failed. Please try again."
-
-        try:
-
-            return response.json()["message"]["content"]
-
-        except (KeyError, ValueError):
-
-            logger.exception("Unexpected Ollama response shape: %s", response.text[:500])
-
-            return "Received an unexpected response from the language model."
 
 
 # ---------------------------------------------------------
 # CLI entry point
 # ---------------------------------------------------------
 
-if __name__ == "__main__":  # CLI mode -- python -m src.ollama_client
+if __name__ == "__main__":  # CLI mode -- python -m src.LLM.ollama_client
 
     logging.basicConfig(level=logging.INFO)
 
-    generator = LLMGenerator(model="llama3.2")
+    generator = LLMGenerator()
 
     while True:
 
